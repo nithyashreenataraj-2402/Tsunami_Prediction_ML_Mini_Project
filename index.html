@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TsunamiSense — Earthquake Tsunami Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #030c18;
+      --surface: #07162a;
+      --border: #0e2a4a;
+      --accent: #00c8ff;
+      --accent-glow: rgba(0, 200, 255, 0.18);
+      --warn: #ff4757;
+      --warn-glow: rgba(255, 71, 87, 0.2);
+      --safe: #2ed573;
+      --safe-glow: rgba(46, 213, 115, 0.2);
+      --text: #e0eeff;
+      --muted: #5a7a9a;
+      --font-display: 'Syne', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* === BACKGROUND === */
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,200,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,200,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wave-container {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 200px;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.15;
+      overflow: hidden;
+    }
+
+    .wave {
+      position: absolute;
+      bottom: 0;
+      left: -100%;
+      width: 300%;
+      height: 100%;
+    }
+
+    .wave svg { width: 100%; height: 100%; }
+
+    .wave-1 { animation: waveMove 14s linear infinite; }
+    .wave-2 { animation: waveMove 10s linear infinite reverse; opacity: 0.6; }
+
+    @keyframes waveMove {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(33.33%); }
+    }
+
+    /* === LAYOUT === */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 48px 24px 120px;
+    }
+
+    /* === HEADER === */
+    header {
+      text-align: center;
+      margin-bottom: 56px;
+      animation: fadeSlideDown 0.8s ease both;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 4px 14px;
+      border-radius: 2px;
+      margin-bottom: 20px;
+      animation: pulse-border 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+      50% { box-shadow: 0 0 0 6px transparent; }
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      background: linear-gradient(135deg, #ffffff 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* === STATS BAR === */
+    .stats-bar {
+      display: flex;
+      gap: 2px;
+      margin-bottom: 40px;
+      animation: fadeSlideDown 0.8s 0.1s ease both;
+    }
+
+    .stat {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 14px 16px;
+      text-align: center;
+    }
+
+    .stat:first-child { border-radius: 6px 0 0 6px; }
+    .stat:last-child { border-radius: 0 6px 6px 0; }
+
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* === CARD === */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 36px;
+      margin-bottom: 24px;
+      animation: fadeSlideDown 0.8s 0.2s ease both;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.6;
+    }
+
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* === FORM GRID === */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field.wide { grid-column: span 2; }
+
+    label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .hint {
+      font-size: 10px;
+      color: #3a5a7a;
+      margin-top: 2px;
+    }
+
+    input, select {
+      background: #050f1e;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      padding: 10px 14px;
+      width: 100%;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      appearance: none;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a7a9a' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+      cursor: pointer;
+    }
+
+    select option {
+      background: #07162a;
+    }
+
+    /* === SUBMIT BUTTON === */
+    .btn-predict {
+      width: 100%;
+      margin-top: 28px;
+      padding: 16px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      color: var(--accent);
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: color 0.3s;
+    }
+
+    .btn-predict::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--accent);
+      transform: translateX(-101%);
+      transition: transform 0.35s cubic-bezier(0.7, 0, 0.3, 1);
+    }
+
+    .btn-predict:hover::before { transform: translateX(0); }
+    .btn-predict:hover { color: var(--bg); }
+
+    .btn-predict span { position: relative; z-index: 1; }
+
+    .btn-predict.loading span { visibility: hidden; }
+    .btn-predict.loading::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 20px; height: 20px;
+      margin: -10px 0 0 -10px;
+      border: 2px solid transparent;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* === RESULT === */
+    .result-card {
+      border-radius: 8px;
+      padding: 36px;
+      display: none;
+      animation: resultReveal 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .result-card.show { display: block; }
+
+    .result-card.tsunami {
+      background: rgba(255, 71, 87, 0.06);
+      border: 1px solid var(--warn);
+    }
+
+    .result-card.tsunami::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--warn);
+    }
+
+    .result-card.no-tsunami {
+      background: rgba(46, 213, 115, 0.06);
+      border: 1px solid var(--safe);
+    }
+
+    .result-card.no-tsunami::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--safe);
+    }
+
+    @keyframes resultReveal {
+      from { opacity: 0; transform: translateY(20px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .result-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .result-icon {
+      font-size: 3.5rem;
+      line-height: 1;
+    }
+
+    .result-label-wrap { flex: 1; }
+
+    .result-verdict {
+      font-family: var(--font-display);
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .result-card.tsunami .result-verdict { color: var(--warn); }
+    .result-card.no-tsunami .result-verdict { color: var(--safe); }
+
+    .result-sub {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* === PROBABILITY BAR === */
+    .prob-section { margin-top: 4px; }
+
+    .prob-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .prob-value {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .result-card.tsunami .prob-value { color: var(--warn); }
+    .result-card.no-tsunami .prob-value { color: var(--safe); }
+
+    .prob-bar-bg {
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+      height: 6px;
+      overflow: hidden;
+    }
+
+    .prob-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 1.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+    }
+
+    .result-card.tsunami .prob-bar-fill { background: var(--warn); }
+    .result-card.no-tsunami .prob-bar-fill { background: var(--safe); }
+
+    /* === INPUT ECHO === */
+    .input-echo {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+    }
+
+    .echo-item { }
+
+    .echo-key {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+
+    .echo-val {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    /* === ERROR === */
+    .error-msg {
+      background: rgba(255,71,87,0.08);
+      border: 1px solid var(--warn);
+      border-radius: 6px;
+      padding: 14px 18px;
+      font-size: 13px;
+      color: var(--warn);
+      margin-top: 16px;
+      display: none;
+    }
+
+    .error-msg.show { display: block; }
+
+    /* === FOOTER NOTE === */
+    .footer-note {
+      text-align: center;
+      font-size: 11px;
+      color: #2a4a6a;
+      margin-top: 40px;
+      letter-spacing: 0.05em;
+    }
+
+    /* === ANIMATIONS === */
+    @keyframes fadeSlideDown {
+      from { opacity: 0; transform: translateY(-16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* === RESPONSIVE === */
+    @media (max-width: 600px) {
+      .card { padding: 24px 18px; }
+      .form-grid { grid-template-columns: 1fr; }
+      .field.wide { grid-column: span 1; }
+      .stats-bar { flex-direction: column; gap: 4px; }
+      .stat:first-child { border-radius: 6px 6px 0 0; }
+      .stat:last-child { border-radius: 0 0 6px 6px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+
+<div class="wave-container">
+  <div class="wave wave-1">
+    <svg viewBox="0 0 1200 120" preserveAspectRatio="none">
+      <path d="M0,60 C150,100 350,0 600,60 C850,120 1050,20 1200,60 L1200,120 L0,120 Z" fill="rgba(0,200,255,0.5)"/>
+    </svg>
+  </div>
+  <div class="wave wave-2">
+    <svg viewBox="0 0 1200 120" preserveAspectRatio="none">
+      <path d="M0,80 C200,30 400,110 600,70 C800,30 1000,90 1200,50 L1200,120 L0,120 Z" fill="rgba(0,150,220,0.4)"/>
+    </svg>
+  </div>
+</div>
+
+<div class="wrapper">
+  <header>
+    <div class="badge">🌊 ML-Powered Early Warning</div>
+    <h1>TsunamiSense</h1>
+    <p class="subtitle">Random Forest · 91% Accuracy · ROC-AUC 0.95</p>
+  </header>
+
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-value">91%</div>
+      <div class="stat-label">Accuracy</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">0.95</div>
+      <div class="stat-label">ROC-AUC</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">86%</div>
+      <div class="stat-label">Precision</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">1000</div>
+      <div class="stat-label">Training Samples</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">Earthquake Parameters</div>
+
+    <form id="predictForm">
+      <div class="form-grid">
+
+        <div class="field">
+          <label>Magnitude</label>
+          <input type="number" id="magnitude" step="0.1" min="0" max="10" placeholder="e.g. 7.2" required />
+          <div class="hint">Richter scale value</div>
+        </div>
+
+        <div class="field">
+          <label>Depth (km)</label>
+          <input type="number" id="depth" step="0.001" min="0" placeholder="e.g. 32.5" required />
+          <div class="hint">Hypocentral depth</div>
+        </div>
+
+        <div class="field">
+          <label>Latitude (°)</label>
+          <input type="number" id="latitude" step="0.0001" min="-90" max="90" placeholder="e.g. 54.38" required />
+          <div class="hint">–90 (S) to 90 (N)</div>
+        </div>
+
+        <div class="field">
+          <label>Longitude (°)</label>
+          <input type="number" id="longitude" step="0.0001" min="-180" max="180" placeholder="e.g. –160.70" required />
+          <div class="hint">–180 (W) to 180 (E)</div>
+        </div>
+
+        <div class="field">
+          <label>NST (Stations)</label>
+          <input type="number" id="nst" step="1" min="0" placeholder="e.g. 173" required />
+          <div class="hint">Number of seismic stations</div>
+        </div>
+
+        <div class="field">
+          <label>DMIN (°)</label>
+          <input type="number" id="dmin" step="0.0001" min="0" placeholder="e.g. 0.907" required />
+          <div class="hint">Min station distance</div>
+        </div>
+
+        <div class="field">
+          <label>Gap (°)</label>
+          <input type="number" id="gap" step="0.1" min="0" max="360" placeholder="e.g. 36.0" required />
+          <div class="hint">Azimuthal gap</div>
+        </div>
+
+        <div class="field">
+          <label>Mag Type</label>
+          <select id="magType" required>
+            <option value="" disabled selected>Select type</option>
+            <option value="mww">mww — W-phase moment</option>
+            <option value="mwc">mwc — Centroid moment</option>
+            <option value="mwb">mwb — Body-wave moment</option>
+            <option value="mw">mw — Moment magnitude</option>
+            <option value="Mi">Mi — Integrated magnitude</option>
+            <option value="mwr">mwr — Regional moment</option>
+            <option value="mb">mb — Body-wave magnitude</option>
+            <option value="ml">ml — Local magnitude</option>
+          </select>
+          <div class="hint">Magnitude measurement type</div>
+        </div>
+
+        <div class="field">
+          <label>Month</label>
+          <select id="month" required>
+            <option value="" disabled selected>Select month</option>
+            <option value="1">January</option>
+            <option value="2">February</option>
+            <option value="3">March</option>
+            <option value="4">April</option>
+            <option value="5">May</option>
+            <option value="6">June</option>
+            <option value="7">July</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <div class="hint">Month of earthquake event</div>
+        </div>
+
+      </div>
+
+      <button type="submit" class="btn-predict" id="predictBtn">
+        <span>⚡ Run Prediction</span>
+      </button>
+    </form>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="result-card" id="resultCard">
+    <div class="result-top">
+      <div class="result-label-wrap">
+        <div class="result-verdict" id="resultVerdict">—</div>
+        <div class="result-sub">Model prediction</div>
+      </div>
+      <div class="result-icon" id="resultIcon">—</div>
+    </div>
+
+    <div class="prob-section">
+      <div class="prob-header">
+        <span>Tsunami Probability</span>
+        <span class="prob-value" id="probValue">—</span>
+      </div>
+      <div class="prob-bar-bg">
+        <div class="prob-bar-fill" id="probBarFill"></div>
+      </div>
+    </div>
+
+    <div class="input-echo" id="inputEcho"></div>
+  </div>
+
+  <p class="footer-note">
+    Trained on USGS earthquake data 1995–2023 · For educational purposes only · Always defer to official warnings
+  </p>
+</div>
+
+<script>
+  const FLASK_URL = 'http://127.0.0.1:5000/predict';
+
+  const form = document.getElementById('predictForm');
+  const btn = document.getElementById('predictBtn');
+  const resultCard = document.getElementById('resultCard');
+  const errorMsg = document.getElementById('errorMsg');
+
+  const monthNames = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Reset UI
+    resultCard.className = 'result-card';
+    errorMsg.className = 'error-msg';
+    btn.classList.add('loading');
+    btn.disabled = true;
+
+    const payload = {
+      magnitude: document.getElementById('magnitude').value,
+      depth:     document.getElementById('depth').value,
+      latitude:  document.getElementById('latitude').value,
+      longitude: document.getElementById('longitude').value,
+      nst:       document.getElementById('nst').value,
+      dmin:      document.getElementById('dmin').value,
+      gap:       document.getElementById('gap').value,
+      magType:   document.getElementById('magType').value,
+      month:     document.getElementById('month').value
+    };
+
+    try {
+      const res = await fetch(FLASK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+
+      if (data.error) throw new Error(data.error);
+
+      // Populate result
+      const isTsunami = data.prediction === 1;
+
+      document.getElementById('resultVerdict').textContent = data.label;
+      document.getElementById('resultIcon').textContent = isTsunami ? '🌊' : '✅';
+      document.getElementById('probValue').textContent = data.probability + '%';
+
+      resultCard.className = 'result-card show ' + (isTsunami ? 'tsunami' : 'no-tsunami');
+
+      // Animate bar
+      setTimeout(() => {
+        document.getElementById('probBarFill').style.width = data.probability + '%';
+      }, 100);
+
+      // Input echo
+      const echo = document.getElementById('inputEcho');
+      echo.innerHTML = [
+        { k: 'Magnitude', v: payload.magnitude },
+        { k: 'Depth', v: payload.depth + ' km' },
+        { k: 'Latitude', v: payload.latitude + '°' },
+        { k: 'Longitude', v: payload.longitude + '°' },
+        { k: 'NST', v: payload.nst },
+        { k: 'DMIN', v: payload.dmin + '°' },
+        { k: 'Gap', v: payload.gap + '°' },
+        { k: 'Mag Type', v: payload.magType },
+        { k: 'Month', v: monthNames[parseInt(payload.month)] },
+      ].map(({ k, v }) => `
+        <div class="echo-item">
+          <div class="echo-key">${k}</div>
+          <div class="echo-val">${v}</div>
+        </div>`).join('');
+
+      resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    } catch (err) {
+      errorMsg.textContent = '⚠ ' + (err.message.includes('Failed to fetch')
+        ? 'Could not reach Flask server. Make sure app.py is running on port 5000.'
+        : err.message);
+      errorMsg.className = 'error-msg show';
+    } finally {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
